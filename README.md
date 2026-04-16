@@ -46,7 +46,7 @@ Set the duration column format to **Custom Duration** `[HH]:mm:ss` to prevent ho
 ## Installation
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/AttendanceBot.git
+git clone https://github.com/neobots2903/AttendanceBot.git
 cd AttendanceBot
 bun install
 ```
