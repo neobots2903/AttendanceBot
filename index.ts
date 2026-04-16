@@ -109,20 +109,31 @@ function nowISO(): string {
 
 const FORMULA_PREFIX = /^[=+\-@]/;
 
-const clockInGreetings = [
-  "Good luck today!",
-  "Let's get to work!",
-  "Time to make things happen!",
-  "You've got this!",
-  "Make it a great day!",
-  "Ready, set, go!",
-  "Let's do this!",
-  "Another day, another opportunity!",
-  "Glad you're here!",
-  "Let's make some progress!",
-  "Bolden Bichael \"Befense\" Baverfield wishes you a productive day!",
-  "Bertha sends her regards and hopes you have a fantastic day!",
+const clockInGreetings: { text: string; rare?: boolean }[] = [
+  { text: "Good luck today!" },
+  { text: "Let's get to work!" },
+  { text: "Time to make things happen!" },
+  { text: "You've got this!" },
+  { text: "Make it a great day!" },
+  { text: "Ready, set, go!" },
+  { text: "Let's do this!" },
+  { text: "Another day, another opportunity!" },
+  { text: "Glad you're here!" },
+  { text: "Let's make some progress!" },
+  { text: "Bolden Bichael \"Befense\" Baverfield wishes you a productive day!", rare: true },
+  { text: "Bertha sends her regards and hopes you have a fantastic day!", rare: true },
 ];
+
+const RARE_CHANCE = 0.05; // 5% chance to pick from the rare pool
+
+function pickGreeting(): string {
+  const common = clockInGreetings.filter((g) => !g.rare);
+  const rare = clockInGreetings.filter((g) => g.rare);
+  if (rare.length > 0 && Math.random() < RARE_CHANCE) {
+    return rare[Math.floor(Math.random() * rare.length)]!.text;
+  }
+  return common[Math.floor(Math.random() * common.length)]!.text;
+}
 
 function sanitizeName(name: string): string {
   if (FORMULA_PREFIX.test(name)) {
@@ -265,8 +276,7 @@ async function handleIn(interaction: ChatInputCommandInteraction<CacheType>) {
       status: "ACTIVE",
     });
 
-    const greeting = clockInGreetings[Math.floor(Math.random() * clockInGreetings.length)]!;
-    await interaction.editReply(`Clocked in at **${now}**. ${greeting}`);
+    await interaction.editReply(`Clocked in at **${now}**. ${pickGreeting()}`);
   } finally {
     sheetLock.release();
   }
