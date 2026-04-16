@@ -1,0 +1,11 @@
+services:
+  bot:
+    build: .
+    restart: unless-stopped
+    environment:
+      - DISCORD_BOT_TOKEN
+      - SHEET_ID
+      - MENTOR_ROLE_ID
+      - GOOGLE_SERVICE_ACCOUNT_JSON
+    env_file:
+      - .env
