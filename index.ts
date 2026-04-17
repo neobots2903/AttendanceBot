@@ -99,6 +99,12 @@ class AsyncLock {
 const sheetLock = new AsyncLock();
 
 // ──────────────────────────────────────────────
+// Active-user cache (in-memory)
+// ──────────────────────────────────────────────
+/** Maps real_name → discord_id for everyone currently clocked in. */
+const activeUsers = new Map<string, string>();
+
+// ──────────────────────────────────────────────
 // Helpers
 // ──────────────────────────────────────────────
 function nowISO(): string {
@@ -204,7 +210,11 @@ const outCmd = new SlashCommandBuilder()
     o.setName("student").setDescription("The student to clock out").setRequired(true)
   );
 
-const commands = [registerCmd, inCmd, outCmd];
+const whoCmd = new SlashCommandBuilder()
+  .setName("who")
+  .setDescription("See who is currently clocked in.");
+
+const commands = [registerCmd, inCmd, outCmd, whoCmd];
 
 // ──────────────────────────────────────────────
 // Command handlers
@@ -257,17 +267,14 @@ async function handleIn(interaction: ChatInputCommandInteraction<CacheType>) {
       return;
     }
 
-    const logSheet = await getSheet("Log");
-    const logRows = await logSheet.getRows();
-
-    const lastRow = await findMostRecentLogRow(profile.realName, logRows);
-    if (lastRow && lastRow.get("status") === "ACTIVE") {
+    if (activeUsers.has(profile.realName)) {
       await interaction.editReply({
         content: "You already have an **ACTIVE** session. Ask a mentor to `/out` you first.",
         flags: MessageFlags.Ephemeral,
       });
       return;
     }
+    const logSheet = await getSheet("Log");
     const now = nowISO();
     await logSheet.addRow({
       real_name: profile.realName,
@@ -276,6 +283,8 @@ async function handleIn(interaction: ChatInputCommandInteraction<CacheType>) {
       check_out_datetime: "",
       status: "ACTIVE",
     });
+
+    activeUsers.set(profile.realName, discordId);
 
     await interaction.editReply(`Clocked in at **${now}**. ${pickGreeting()}`);
   } finally {
@@ -327,12 +336,29 @@ async function handleOut(interaction: ChatInputCommandInteraction<CacheType>) {
     lastRow.set("status", "COMPLETED");
     await lastRow.save();
 
+    activeUsers.delete(profile.realName);
+
     await interaction.editReply(
       `Clocked out **${profile.realName}** (${targetUser}) at **${now}**.`
     );
   } finally {
     sheetLock.release();
   }
+}
+
+async function handleWho(interaction: ChatInputCommandInteraction<CacheType>) {
+  if (activeUsers.size === 0) {
+    await interaction.editReply("Nobody is clocked in right now.");
+    return;
+  }
+
+  const lines = [...activeUsers.entries()].map(
+    ([name, id]) => `• **${name}** (<@${id}>)`
+  );
+
+  await interaction.editReply(
+    `**Currently here (${activeUsers.size}):**\n${lines.join("\n")}`
+  );
 }
 
 // ──────────────────────────────────────────────
@@ -368,6 +394,7 @@ async function nightlyReset() {
       row.set("check_out_datetime", "");
       row.set("status", "NEEDS REVIEW");
       await row.save();
+      activeUsers.delete(name);
       console.log(
         `[cron] Flagged session for ${name} – needs manual review`
       );
@@ -410,6 +437,30 @@ client.once(Events.ClientReady, async (c) => {
   });
   console.log("Slash commands registered.");
 
+  // Hydrate the active-user cache from the spreadsheet
+  try {
+    const logSheet = await getSheet("Log");
+    const rows = await logSheet.getRows();
+    const roster = await getSheet("Roster");
+    const rosterRows = await roster.getRows();
+    const nameToId = new Map<string, string>();
+    for (const r of rosterRows) {
+      const id = r.get("discord_id") as string;
+      const name = r.get("real_name") as string;
+      if (id && name) nameToId.set(name, id);
+    }
+    for (const row of rows) {
+      if (row.get("status") === "ACTIVE") {
+        const name = row.get("real_name") as string;
+        const id = nameToId.get(name);
+        if (name && id) activeUsers.set(name, id);
+      }
+    }
+    console.log(`[init] Hydrated ${activeUsers.size} active user(s) from Log sheet.`);
+  } catch (err) {
+    console.error("[init] Failed to hydrate active users:", err);
+  }
+
   // Start nightly reset cron (02:00)
   startNightlyResetCron();
 });
@@ -418,7 +469,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
 
   // Acknowledge the interaction ASAP to avoid the 3-second token expiry.
-  const ephemeral = interaction.commandName === "register";
+  const ephemeral = interaction.commandName === "register" || interaction.commandName === "who";
   try {
     await interaction.deferReply({
       flags: ephemeral ? MessageFlags.Ephemeral : undefined,
@@ -439,6 +490,9 @@ client.on(Events.InteractionCreate, async (interaction) => {
         break;
       case "out":
         await handleOut(interaction);
+        break;
+      case "who":
+        await handleWho(interaction);
         break;
     }
   } catch (err) {
