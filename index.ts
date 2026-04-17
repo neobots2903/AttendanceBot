@@ -210,7 +210,6 @@ const commands = [registerCmd, inCmd, outCmd];
 // Command handlers
 // ──────────────────────────────────────────────
 async function handleRegister(interaction: ChatInputCommandInteraction<CacheType>) {
-  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
   const fullName = sanitizeName(interaction.options.getString("name", true).trim());
   if (fullName.length > 100) {
     await interaction.editReply("Name must be 100 characters or fewer.");
@@ -245,16 +244,16 @@ async function handleRegister(interaction: ChatInputCommandInteraction<CacheType
 }
 
 async function handleIn(interaction: ChatInputCommandInteraction<CacheType>) {
-  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
   const discordId = interaction.user.id;
 
   await sheetLock.acquire();
   try {
     const profile = await lookupRoster(discordId);
     if (!profile) {
-      await interaction.editReply(
-        "You are not registered. Use `/register [Full Name]` first."
-      );
+      await interaction.editReply({
+        content: "You are not registered. Use `/register [Full Name]` first.",
+        flags: MessageFlags.Ephemeral,
+      });
       return;
     }
 
@@ -263,9 +262,10 @@ async function handleIn(interaction: ChatInputCommandInteraction<CacheType>) {
 
     const lastRow = await findMostRecentLogRow(profile.realName, logRows);
     if (lastRow && lastRow.get("status") === "ACTIVE") {
-      await interaction.editReply(
-        "You already have an **ACTIVE** session. Ask a mentor to `/out` you first."
-      );
+      await interaction.editReply({
+        content: "You already have an **ACTIVE** session. Ask a mentor to `/out` you first.",
+        flags: MessageFlags.Ephemeral,
+      });
       return;
     }
     const now = nowISO();
@@ -284,14 +284,16 @@ async function handleIn(interaction: ChatInputCommandInteraction<CacheType>) {
 }
 
 async function handleOut(interaction: ChatInputCommandInteraction<CacheType>) {
-  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
   // Role gate – mentor only
   const member = interaction.member;
   const roles =
     member && "cache" in member.roles ? member.roles.cache : null;
   if (!roles?.has(MENTOR_ROLE_ID)) {
-    await interaction.editReply("Only mentors can clock students out.");
+    await interaction.editReply({
+      content: "Only mentors can clock students out.",
+      flags: MessageFlags.Ephemeral,
+    });
     return;
   }
 
@@ -301,9 +303,10 @@ async function handleOut(interaction: ChatInputCommandInteraction<CacheType>) {
   try {
     const profile = await lookupRoster(targetUser.id);
     if (!profile) {
-      await interaction.editReply(
-        `**${targetUser.displayName}** is not registered.`
-      );
+      await interaction.editReply({
+        content: `**${targetUser.displayName}** is not registered.`,
+        flags: MessageFlags.Ephemeral,
+      });
       return;
     }
 
@@ -312,9 +315,10 @@ async function handleOut(interaction: ChatInputCommandInteraction<CacheType>) {
 
     const lastRow = await findMostRecentLogRow(profile.realName, logRows);
     if (!lastRow || lastRow.get("status") !== "ACTIVE") {
-      await interaction.editReply(
-        `No active session found for **${profile.realName}**. Use the spreadsheet for a manual entry.`
-      );
+      await interaction.editReply({
+        content: `No active session found for **${profile.realName}**. Use the spreadsheet for a manual entry.`,
+        flags: MessageFlags.Ephemeral,
+      });
       return;
     }
 
@@ -324,7 +328,7 @@ async function handleOut(interaction: ChatInputCommandInteraction<CacheType>) {
     await lastRow.save();
 
     await interaction.editReply(
-      `Clocked out **${profile.realName}** at **${now}**.`
+      `Clocked out **${profile.realName}** (${targetUser}) at **${now}**.`
     );
   } finally {
     sheetLock.release();
@@ -413,6 +417,18 @@ client.once(Events.ClientReady, async (c) => {
 client.on(Events.InteractionCreate, async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
 
+  // Acknowledge the interaction ASAP to avoid the 3-second token expiry.
+  const ephemeral = interaction.commandName === "register";
+  try {
+    await interaction.deferReply({
+      flags: ephemeral ? MessageFlags.Ephemeral : undefined,
+    });
+  } catch {
+    // Interaction already expired – nothing we can do.
+    console.warn(`[warn] Failed to defer /${interaction.commandName}: interaction expired`);
+    return;
+  }
+
   try {
     switch (interaction.commandName) {
       case "register":
@@ -428,12 +444,9 @@ client.on(Events.InteractionCreate, async (interaction) => {
   } catch (err) {
     console.error(`Error handling /${interaction.commandName}:`, err);
     try {
-      const msg = "Something went wrong. Please try again or contact an admin.";
-      if (interaction.deferred) {
-        await interaction.editReply({ content: msg });
-      } else {
-        await interaction.reply({ content: msg, flags: MessageFlags.Ephemeral });
-      }
+      await interaction.editReply({
+        content: "Something went wrong. Please try again or contact an admin.",
+      });
     } catch { /* interaction expired or webhook gone */ }
   }
 });
