@@ -2,6 +2,7 @@ import {
   Client,
   Events,
   GatewayIntentBits,
+  MessageFlags,
   REST,
   Routes,
   SlashCommandBuilder,
@@ -209,7 +210,7 @@ const commands = [registerCmd, inCmd, outCmd];
 // Command handlers
 // ──────────────────────────────────────────────
 async function handleRegister(interaction: ChatInputCommandInteraction<CacheType>) {
-  await interaction.deferReply({ ephemeral: true });
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
   const fullName = sanitizeName(interaction.options.getString("name", true).trim());
   if (fullName.length > 100) {
     await interaction.editReply("Name must be 100 characters or fewer.");
@@ -244,7 +245,7 @@ async function handleRegister(interaction: ChatInputCommandInteraction<CacheType
 }
 
 async function handleIn(interaction: ChatInputCommandInteraction<CacheType>) {
-  await interaction.deferReply({ ephemeral: true });
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
   const discordId = interaction.user.id;
 
   await sheetLock.acquire();
@@ -283,7 +284,7 @@ async function handleIn(interaction: ChatInputCommandInteraction<CacheType>) {
 }
 
 async function handleOut(interaction: ChatInputCommandInteraction<CacheType>) {
-  await interaction.deferReply({ ephemeral: true });
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
   // Role gate – mentor only
   const member = interaction.member;
@@ -431,7 +432,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       if (interaction.deferred) {
         await interaction.editReply({ content: msg });
       } else {
-        await interaction.reply({ content: msg, ephemeral: true });
+        await interaction.reply({ content: msg, flags: MessageFlags.Ephemeral });
       }
     } catch { /* interaction expired or webhook gone */ }
   }

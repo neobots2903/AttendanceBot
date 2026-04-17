@@ -1,6 +1,8 @@
 services:
   bot:
-    build: .
+    build:
+      context: .
+      network: host
     restart: unless-stopped
     environment:
       - DISCORD_BOT_TOKEN
