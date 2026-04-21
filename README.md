@@ -9,6 +9,7 @@ A Discord bot for tracking FRC team meeting attendance using Google Sheets as th
 | `/register <name>` | Anyone | Links your Discord account to your real name |
 | `/in` | Students | Starts an attendance session (new row, status `ACTIVE`) |
 | `/out @student` | Mentors only | Ends the student's session (same row, status `COMPLETED`) |
+| `/who` | Anyone | Lists the present members |
 
 Check-in and check-out timestamps share a single row so duration calculation is trivial in the spreadsheet.
 
